@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.DS_Store
+*.tmp
+
+# Local Claude Code settings (not part of the plugin)
+.claude/settings.local.json
