@@ -28,18 +28,20 @@ you can read end to end before you trust it.
 | Pattern | Example | Caught by |
 |---|---|---|
 | **Consecutive repeats** | the same `Edit` with the same `old_string` 5× in a row | `consecutive_threshold` |
-| **Near-identical retries** | the same call tweaked by a space / counter each time | fuzzy matching (`fuzzy_threshold`) |
-| **Short cycles** | `Read x.py → Bash make → Read x.py → Bash make → …` (same args each loop) | cycle detection |
+| **Retry storms** | the same call retried with a fresh id / timestamp / counter each time | `structural_detection` |
+| **Short cycles** | `Read x.py → Bash make → Read x.py → Bash make → …` (same args each loop), period up to 6 | cycle detection |
 | **Runaway spend** *(opt-in)* | a session blowing past a tool-call or estimated-token ceiling | budget backstops |
 
 ### What it deliberately does **not** flag
 
 Productive iteration looks like a loop but isn't. Editing **different** files,
-making **evolving** edits, or re-running tests **between real changes** all have
-changing arguments — so their fingerprints differ and Loop Breaker leaves them
-alone. It triggers on *stuck* repetition (identical arguments, no progress), which
-keeps false positives near zero. When it's wrong, it **fails open** and when it
-blocks, the block is **recoverable** — it never wedges your session.
+making **evolving** edits, re-running tests **between real changes**, paginating
+(`offset`/`page`), parameterized re-runs (`--seed=N`), or re-checking state with
+read-only commands (`git status`/`git diff`) all have changing or read-only
+arguments — so Loop Breaker leaves them alone. It triggers on *stuck* repetition
+(identical arguments, no progress), which keeps false positives near zero. When
+it's wrong, it **fails open**; when it blocks, the block is **recoverable** (a
+different next call re-arms it immediately) — it never wedges your session.
 
 ---
 
@@ -71,18 +73,21 @@ All settings are optional. Copy [`config.example.json`](./config.example.json) t
 
 | Key | Default | Meaning |
 |---|---|---|
-| `mode` | `"kill"` | `"kill"` blocks, `"warn"` only annotates, `"off"` disables |
-| `consecutive_threshold` | `5` | near-identical calls in a row before tripping |
-| `fuzzy_threshold` | `0.95` | similarity (0–1) counted as "the same call" |
-| `cycle_reps` | `3` | repetitions of a short cycle to trip |
-| `cycle_max_period` | `3` | longest cycle length to detect (≥2) |
+| `mode` | `"kill"` | `"kill"` blocks · `"warn"` annotates (debounced) · `"off"` disables |
+| `consecutive_threshold` | `5` | identical calls in a row before tripping |
+| `structural_detection` | `true` | also catch retries that differ only in ids/timestamps/counters |
+| `cycle_reps` | `4` | repetitions of a short cycle to trip |
+| `cycle_max_period` | `6` | longest cycle length to detect (≥2) |
+| `read_only_cycle_exempt` | `true` | don't trip cycles made only of read-only inspection (`git status`/`git diff`/`Read`…) |
 | `window_size` / `window_threshold` | `0` / `0` | optional windowed-repeat detection (off) |
 | `max_tool_calls` | `0` | optional hard ceiling on tool calls per session (off) |
 | `max_estimated_tokens` | `0` | optional estimated-token backstop (off) |
 | `ignore_tools` | `[]` | tool names to never count or block |
 
-Hit a false positive? Raise `consecutive_threshold` or add the tool to
-`ignore_tools` — don't reach for `"off"`.
+Values are type-checked and clamped on load, so a typo (e.g. a quoted number)
+degrades to the default instead of silently disabling detection. Hit a false
+positive? Raise `consecutive_threshold` or add the tool to `ignore_tools` — don't
+reach for `"off"`.
 
 ---
 

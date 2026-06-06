@@ -5,3 +5,6 @@ __pycache__/
 
 # Local Claude Code settings (not part of the plugin)
 .claude/settings.local.json
+
+# Personal notes (not part of the plugin)
+how_it_works.md

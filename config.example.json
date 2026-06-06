@@ -1,13 +1,15 @@
 {
-  "_comment": "Copy to ~/.claude/loop-breaker/config.json (global) or <project>/.loop-breaker.json (project). All keys optional; omitted keys use defaults.",
+  "_comment": "Copy to ~/.claude/loop-breaker/config.json (global) or <project>/.loop-breaker.json (project). All keys optional; omitted keys use defaults. Values are type-checked and clamped, so a typo (e.g. a quoted number) can never disable detection.",
 
   "mode": "kill",
 
   "consecutive_threshold": 5,
-  "fuzzy_threshold": 0.95,
 
-  "cycle_reps": 3,
-  "cycle_max_period": 3,
+  "structural_detection": true,
+
+  "cycle_reps": 4,
+  "cycle_max_period": 6,
+  "read_only_cycle_exempt": true,
 
   "window_size": 0,
   "window_threshold": 0,

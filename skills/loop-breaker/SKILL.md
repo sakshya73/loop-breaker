@@ -17,14 +17,16 @@ tool calls) before they waste tokens. This skill helps the user inspect and tune
 ## Common actions
 
 **Show current config and defaults** — read `~/.claude/loop-breaker/config.json`
-(if absent, the built-in defaults in the hook script apply: kill mode, 5 consecutive
-near-identical calls, fuzzy 0.95, 3x cycle detection).
+(if absent, the built-in defaults apply: kill mode, 5 identical calls in a row,
+structural retry-storm detection, cycles up to period 6 ×4 with a read-only
+exemption).
 
 **Loosen / tighten detection** — edit the config file. Useful keys:
-- `mode`: `"kill"` (block), `"warn"` (allow but annotate), or `"off"`.
-- `consecutive_threshold`: how many near-identical calls in a row trip it (default 5).
-- `fuzzy_threshold`: 0–1 similarity counted as "the same call" (default 0.95).
-- `cycle_reps` / `cycle_max_period`: short-cycle (A-B-A-B) detection.
+- `mode`: `"kill"` (block), `"warn"` (annotate, debounced), or `"off"`.
+- `consecutive_threshold`: identical calls in a row that trip it (default 5).
+- `structural_detection`: catch retries differing only in ids/timestamps/counters (default true).
+- `cycle_reps` / `cycle_max_period`: short-cycle (A-B-A-B…) detection (default 4 / 6).
+- `read_only_cycle_exempt`: don't trip cycles of pure inspection like `git status`/`git diff` (default true).
 - `max_tool_calls` / `max_estimated_tokens`: optional budget backstops (0 = off).
 - `ignore_tools`: tool names to never count or block.
 
