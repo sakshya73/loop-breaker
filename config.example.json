@@ -1,0 +1,20 @@
+{
+  "_comment": "Copy to ~/.claude/loop-breaker/config.json (global) or <project>/.loop-breaker.json (project). All keys optional; omitted keys use defaults.",
+
+  "mode": "kill",
+
+  "consecutive_threshold": 5,
+  "fuzzy_threshold": 0.95,
+
+  "cycle_reps": 3,
+  "cycle_max_period": 3,
+
+  "window_size": 0,
+  "window_threshold": 0,
+
+  "max_tool_calls": 0,
+  "max_estimated_tokens": 0,
+
+  "ignore_tools": [],
+  "history_size": 60
+}
