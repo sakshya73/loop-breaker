@@ -2,6 +2,8 @@
 
 **The runaway-loop kill switch for Claude Code.**
 
+![Loop Breaker blocking a runaway loop](demo.gif)
+
 Loop Breaker is a tiny, open-source [PreToolUse hook](https://code.claude.com/docs/en/hooks)
 that watches your agent's tool calls and **stops it the moment it gets stuck in a
 loop** — the same edit retried over and over, the same failing command re-run, an
