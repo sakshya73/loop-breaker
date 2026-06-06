@@ -91,6 +91,72 @@ reach for `"off"`.
 
 ---
 
+## Use in CI / headless pipelines
+
+Unattended runs are where a runaway loop hurts most — no one's watching to Ctrl-C.
+Loop Breaker works the same in headless `claude -p` mode, with a useful property:
+**in `-p` mode, repeated blocks abort the run** (there's no human to prompt), so a
+stuck agent either course-corrects or the job stops — instead of churning until your
+budget is gone.
+
+Use it as the *early, precise* layer alongside Claude Code's hard ceiling:
+
+| Layer | Role |
+|---|---|
+| **Loop Breaker** | catches the loop early; forces a course-correction, or aborts the run on repeat |
+| `max_tool_calls` (Loop Breaker) | deterministic hard cap on tool calls per run |
+| `--max-budget-usd` | hard dollar ceiling (`--print` only) — the ultimate backstop |
+| SDK `max_turns` / `max_budget_usd` | same caps when driving Claude Code via the Agent SDK |
+
+**Setup (vendored — most reproducible for ephemeral CI, no marketplace/network).**
+Commit the hook + config into your repo:
+
+```text
+.claude/
+  settings.json
+  hooks/loop_breaker.py        # vendored copy of the hook
+.loop-breaker.json             # CI-tuned config
+```
+
+`.claude/settings.json`
+```json
+{ "hooks": { "PreToolUse": [ { "matcher": "*", "hooks": [
+  { "type": "command",
+    "command": "python3 \"${CLAUDE_PROJECT_DIR}/.claude/hooks/loop_breaker.py\"",
+    "timeout": 10 } ] } ] } }
+```
+
+`.loop-breaker.json`
+```json
+{ "mode": "kill", "consecutive_threshold": 5, "max_tool_calls": 200 }
+```
+
+**GitHub Actions step:**
+```yaml
+- name: Run Claude Code agent (loop-guarded)
+  env:
+    ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    LOOP_BREAKER_STATE_DIR: ${{ runner.temp }}/lb-state   # writable scratch
+  run: |
+    claude -p "${{ inputs.task }}" \
+      --allowedTools "Read,Edit,Write,Bash" \
+      --max-budget-usd 5
+```
+
+No vendoring? Use `claude -p --plugin-dir /path/to/loop-breaker "..."` (also accepts
+a `.zip`, or `--plugin-url <zip-url>`).
+
+**Notes**
+- `-p` does **not** auto-approve tools — pre-authorize with `--allowedTools` (or a
+  `--permission-mode`), or the agent can't run Bash/Edit at all.
+- Don't use `--bare` — it skips hooks (and therefore Loop Breaker).
+- Needs `python3` on the runner (stdlib only, no `pip`).
+- The in-hook budget is a rough *estimate*; use `--max-budget-usd` for real dollar
+  control and `max_tool_calls` for a deterministic count cap.
+- **Smoke-test one real headless run before relying on it in production CI.**
+
+---
+
 ## How it works
 
 On every tool call, Claude Code sends the hook a JSON payload on stdin including the
