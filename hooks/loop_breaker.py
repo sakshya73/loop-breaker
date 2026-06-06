@@ -61,6 +61,12 @@ VOLATILE_KEYS = {
     "idempotency_key", "ts", "timestamp", "time", "correlation_id",
     "trace_id", "span_id", "run_id", "job_id", "uuid", "guid",
 }
+# Cosmetic fields that don't change what a call DOES, keyed BY TOOL so we only drop
+# them where they're truly non-semantic. The Bash "description" is a human label the
+# agent rewords on each retry; dropping it keeps a reworded retry counting as the same
+# call. This MUST stay tool-scoped: for tools like MCP CreateTask/SendMessage,
+# "description" is the semantic payload and dropping it would falsely merge distinct calls.
+IGNORE_FP_KEYS_BY_TOOL = {"Bash": {"description"}}
 _UUID_RE = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 _LONGNUM_RE = re.compile(r"\d{10,}")   # timestamps, long ids, long digit runs
 _WS_RE = re.compile(r"\s+")
@@ -92,6 +98,19 @@ def fingerprint(tool_name, canon):
     return h.hexdigest()
 
 
+def _core_input(tool_name, tool_input):
+    """Drop tool-specific cosmetic keys (e.g. Bash 'description') before fingerprinting."""
+    ignore = IGNORE_FP_KEYS_BY_TOOL.get(tool_name)
+    if ignore and isinstance(tool_input, dict):
+        return {k: v for k, v in tool_input.items() if k not in ignore}
+    return tool_input
+
+
+def exact_fingerprint(tool_name, tool_input):
+    """Fingerprint of the semantically-meaningful tool input (ignores cosmetic keys)."""
+    return fingerprint(tool_name, canonical_args(_core_input(tool_name, tool_input)))
+
+
 def _scrub(value, key=None):
     """Replace volatile tokens so retries differing only in ids/timestamps match."""
     if key is not None and str(key).lower() in VOLATILE_KEYS:
@@ -114,11 +133,12 @@ def _scrub(value, key=None):
 
 
 def structural_fingerprint(tool_name, tool_input):
-    """Fingerprint after stripping volatile fields — catches retry storms."""
+    """Fingerprint after dropping cosmetic keys and stripping volatile fields — catches retry storms."""
+    core = _core_input(tool_name, tool_input)
     try:
-        canon = json.dumps(_scrub(tool_input), sort_keys=True, ensure_ascii=False, default=str)
+        canon = json.dumps(_scrub(core), sort_keys=True, ensure_ascii=False, default=str)
     except Exception:
-        canon = canonical_args(tool_input)
+        canon = canonical_args(core)
     return fingerprint(tool_name, canon)
 
 
@@ -251,7 +271,7 @@ def _clamp(cfg):
             cfg[k] = DEFAULTS[k]
     for b in ("structural_detection", "read_only_cycle_exempt"):
         cfg[b] = bool(cfg.get(b, DEFAULTS[b]))
-    if cfg["mode"] not in ("kill", "warn", "off"):
+    if cfg.get("mode") not in ("kill", "warn", "off"):
         cfg["mode"] = "kill"
     if not isinstance(cfg.get("ignore_tools"), list):
         cfg["ignore_tools"] = []
@@ -315,8 +335,8 @@ def load_state(session_id):
         with open(path, "r", encoding="utf-8") as fh:
             data = json.load(fh)
         if isinstance(data, dict):
-            data.setdefault("calls", 0)
-            data.setdefault("est_tokens", 0)
+            c = data.get("calls"); data["calls"] = c if isinstance(c, int) and not isinstance(c, bool) else 0
+            t = data.get("est_tokens"); data["est_tokens"] = t if isinstance(t, int) and not isinstance(t, bool) else 0
             hist = data.get("history", [])
             data["history"] = [e for e in hist if isinstance(e, dict)] if isinstance(hist, list) else []
             return data
@@ -439,7 +459,7 @@ def main():
     if tool_input is None:
         tool_input = {}
 
-    canon = canonical_args(tool_input)
+    canon = canonical_args(_core_input(tool_name, tool_input))
     fp = fingerprint(tool_name, canon)
     sfp = structural_fingerprint(tool_name, tool_input)
     ro = is_read_only(tool_name, tool_input)

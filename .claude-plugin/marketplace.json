@@ -8,7 +8,7 @@
       "name": "loop-breaker",
       "source": ".",
       "description": "Detects and kills runaway Claude Code agent loops, with a coarse session budget backstop.",
-      "version": "0.1.1"
+      "version": "0.1.2"
     }
   ]
 }

@@ -1,7 +1,7 @@
 {
   "name": "loop-breaker",
   "description": "Detects and kills runaway Claude Code agent loops (N near-identical consecutive tool calls or short A-B-A-B cycles), with a coarse session budget backstop. The loop kill-switch Claude Code doesn't ship natively.",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "author": {
     "name": "Sakshya73"
   },

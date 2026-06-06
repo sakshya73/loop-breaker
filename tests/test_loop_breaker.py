@@ -27,9 +27,8 @@ def cfg(**over):
 
 
 def entry(tool, args):
-    canon = lb.canonical_args(args)
     return {
-        "fp": lb.fingerprint(tool, canon),
+        "fp": lb.exact_fingerprint(tool, args),
         "sfp": lb.structural_fingerprint(tool, args),
         "tool": tool,
         "ro": lb.is_read_only(tool, args),
@@ -41,8 +40,7 @@ def hist(calls):
 
 
 def incoming(tool, args):
-    canon = lb.canonical_args(args)
-    return lb.fingerprint(tool, canon), lb.structural_fingerprint(tool, args), lb.is_read_only(tool, args)
+    return lb.exact_fingerprint(tool, args), lb.structural_fingerprint(tool, args), lb.is_read_only(tool, args)
 
 
 def run(calls, **over):
@@ -87,6 +85,37 @@ class StructuralFingerprint(unittest.TestCase):
         a = lb.structural_fingerprint("Edit", {"file_path": "a.py", "new_string": "def foo(): pass"})
         b = lb.structural_fingerprint("Edit", {"file_path": "a.py", "new_string": "def bar(): pass"})
         self.assertNotEqual(a, b)
+
+
+class IgnoredFields(unittest.TestCase):
+    def test_description_ignored(self):
+        # Bash includes a human-written "description" that often varies per retry.
+        a = lb.exact_fingerprint("Bash", {"command": "echo hi", "description": "attempt 1"})
+        b = lb.exact_fingerprint("Bash", {"command": "echo hi", "description": "attempt 2"})
+        self.assertEqual(a, b)
+
+    def test_command_still_distinguishes(self):
+        a = lb.exact_fingerprint("Bash", {"command": "echo a", "description": "x"})
+        b = lb.exact_fingerprint("Bash", {"command": "echo b", "description": "x"})
+        self.assertNotEqual(a, b)
+
+    def test_loop_with_varying_description_trips(self):
+        calls = [("Bash", {"command": "echo loop", "description": f"attempt {i}"}) for i in range(5)]
+        tripped, kind = run(calls)
+        self.assertTrue(tripped)
+        self.assertEqual(kind, "consecutive")
+
+    def test_description_preserved_for_non_bash(self):
+        # For tools where 'description' is the semantic payload (e.g. MCP CreateTask),
+        # different descriptions must stay DISTINCT (the dropping is Bash-scoped).
+        a = lb.exact_fingerprint("CreateTask", {"name": "t", "description": "Sync from prod"})
+        b = lb.exact_fingerprint("CreateTask", {"name": "t", "description": "Wipe DB"})
+        self.assertNotEqual(a, b)
+
+    def test_non_bash_description_loop_not_blocked(self):
+        # Five genuinely different tasks must NOT be merged into a stuck loop.
+        calls = [("CreateTask", {"name": "t", "description": f"distinct task {i}"}) for i in range(5)]
+        self.assertFalse(run(calls)[0])
 
 
 class ReadOnly(unittest.TestCase):
@@ -258,6 +287,11 @@ class ConfigRobustness(unittest.TestCase):
         finally:
             del os.environ["LOOP_BREAKER_CONSECUTIVE_THRESHOLD"]
 
+    def test_clamp_missing_mode_does_not_crash(self):
+        c = {k: v for k, v in lb.DEFAULTS.items() if k != "mode"}
+        out = lb._clamp(c)
+        self.assertEqual(out["mode"], "kill")
+
 
 class StateRobustness(unittest.TestCase):
     def test_load_state_drops_non_dict_history(self):
@@ -280,6 +314,18 @@ class StateRobustness(unittest.TestCase):
             lb.detect([{"fp": "z", "sfp": "z", "tool": "Edit", "ro": False}, "notadict"], fp, sfp, ro, cfg())
         except Exception as e:
             self.fail(f"detect raised on non-dict history entry: {e}")
+
+    def test_load_state_coerces_null_counters(self):
+        d = tempfile.mkdtemp()
+        os.environ["LOOP_BREAKER_STATE_DIR"] = d
+        try:
+            with open(os.path.join(d, "n.json"), "w") as fh:
+                json.dump({"calls": None, "est_tokens": None, "history": []}, fh)
+            st = lb.load_state("n")
+            self.assertEqual(st["calls"], 0)
+            self.assertEqual(st["est_tokens"], 0)
+        finally:
+            del os.environ["LOOP_BREAKER_STATE_DIR"]
 
 
 if __name__ == "__main__":

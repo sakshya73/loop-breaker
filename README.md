@@ -96,7 +96,7 @@ reach for `"off"`.
 On every tool call, Claude Code sends the hook a JSON payload on stdin including the
 `tool_name` and the exact `tool_input`. Loop Breaker:
 
-1. fingerprints `(tool_name + canonical args)`,
+1. fingerprints `(tool_name + canonical args)` — dropping cosmetic fields like the Bash `description` label, so a reworded retry of the same command still counts,
 2. compares it against a small **per-session history file**
    (`~/.claude/loop-breaker/state/<session_id>.json` — hooks run sequentially per
    session, so no transcript parsing and no races),
@@ -122,12 +122,15 @@ bill, Loop Breaker stops the loop that runs it up.
 ## Develop
 
 ```shell
-python3 -m unittest discover -s tests -v   # run the test suite (zero deps)
+python3 -m unittest discover -s tests -v   # unit tests: detection logic (zero deps)
+bash scripts/verify.sh                     # integration: concurrency, fuzz, modes, recovery, perf
 ```
 
 The detection logic in `hooks/loop_breaker.py` is pure and unit-tested
-(`tests/test_loop_breaker.py`). Contributions welcome — especially new stuck-loop
-patterns and adapters for other hook-capable agents.
+(`tests/test_loop_breaker.py`), and `scripts/verify.sh` exercises the real hook
+end-to-end for the things unit tests can't (races, never-crash robustness,
+path-traversal safety, mode matrix, corrupt-state recovery). Contributions welcome —
+especially new stuck-loop patterns and adapters for other hook-capable agents.
 
 ## License
 
